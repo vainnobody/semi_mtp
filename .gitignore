@@ -9,3 +9,7 @@
 # scripts
 
 **/scripts
+
+# upernet backbone hard encode path ignore
+**/upernet.py
+
