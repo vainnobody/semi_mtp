@@ -231,22 +231,28 @@ def main():
             checkpoint = torch.load(args.resume, map_location="cpu")
             if rank == 0:
                 logger.info("=> loading ft model...")
-            # ckpt_dict = checkpoint['state_dict']
             ckpt_dict = checkpoint["model"]
+            # ckpt_dict = checkpoint['state_dict']
 
             if list(ckpt_dict.keys())[0].startswith("module."):
                 ckpt_dict = {k[7:]: v for k, v in ckpt_dict.items()}
             model_dict = model.state_dict()
 
-            # ====== DEBUG: 打印两边的 keys 和 shapes ======
-            # if rank == 0:
-            #     print("\n=== Checkpoint keys (loaded) ===")
-            #     for k, v in ckpt_dict.items():
-            #         print(f"{k}: {v.shape}")
+            if "backbone.pos_embed" in ckpt_dict and "backbone.pos_embed" in model_dict:
+                if (
+                    ckpt_dict["backbone.pos_embed"].shape
+                    != model_dict["backbone.pos_embed"].shape
+                ):
+                    if rank == 0:
+                        logger.warning(
+                            f"Resizing pos_embed from {ckpt_dict['backbone.pos_embed'].shape} "
+                            f"to {model_dict['backbone.pos_embed'].shape}"
+                        )
 
-            #     print("\n=== Current model keys (target) ===")
-            #     for k, v in model_dict.items():
-            #         print(f"{k}: {v.shape}")
+                    ckpt_dict["backbone.pos_embed"] = resize_pos_embed(
+                        ckpt_dict["backbone.pos_embed"],
+                        model_dict["backbone.pos_embed"],
+                    )
             # 过滤掉分割头的参数
             filtered_ckpt_dict = {}
             for k, v in ckpt_dict.items():
