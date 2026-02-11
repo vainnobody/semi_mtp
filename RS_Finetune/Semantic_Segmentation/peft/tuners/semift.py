@@ -158,7 +158,7 @@ class AdaptModel(torch.nn.Module):
                         )
                 elif self.peft_config.method == "lora":
                     new_module = Lora(
-                        target.fc1.in_features, target.fc2.out_features, r=32, lora_alpha=64
+                        target.in_features, target.out_features, r=32, lora_alpha=64
                     )
 
                 new_module = WarpBlock(target, new_module)
