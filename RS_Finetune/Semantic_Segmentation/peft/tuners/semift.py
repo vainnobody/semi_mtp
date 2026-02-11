@@ -419,3 +419,12 @@ class WarpBlock(nn.Module):
 
     def forward(self, x):
         return self.base_layer(x) + self.adapter(x)
+
+    def __getattr__(self, name):
+        """
+        当在 WarpBlock 中找不到某个属性时，自动去 base_layer 里找
+        """
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.base_layer, name)
