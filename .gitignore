@@ -13,3 +13,6 @@
 # upernet backbone hard encode path ignore
 **/upernet.py
 
+
+# pycache
+**/__pycache__
