@@ -63,8 +63,16 @@ class SemiFTConfig(PeftConfig):
         metadata={"help": "Bias type for Lora. Can be 'none', 'all' or 'lora_only'"},
     )
     nclass: int = field(default=5, metadata={"help": "Numbers of classes"})
-    task_num: int = field(default=2, metadata={"help": "Number of tasks for MultiTaskLora"})
-    task_embedding_dim: int = field(default=64, metadata={"help": "Dimension of task embedding for MultiTaskLora"})
+    task_num: int = field(
+        default=2, metadata={"help": "Number of tasks for MultiTaskLora"}
+    )
+    task_id: int = field(
+        default=0,
+        metadata={"help": "Current task id for MultiTaskLora (which expert to train)"},
+    )
+    task_embedding_dim: int = field(
+        default=64, metadata={"help": "Dimension of task embedding for MultiTaskLora"}
+    )
     modules_to_save: Optional[List[str]] = field(
         default=None,
         metadata={
@@ -164,10 +172,12 @@ class AdaptModel(torch.nn.Module):
                     )
                 elif self.peft_config.method == "rs_multi_task_lora":
                     new_module = MultiTaskLora(
-                        target.in_features, target.out_features, 
-                        r=32, lora_alpha=64,
+                        task_id=self.peft_config.task_id,
+                        in_features=target.in_features,
+                        out_features=target.out_features,
+                        r=32,
+                        lora_alpha=64,
                         task_num=self.peft_config.task_num,
-                        task_embedding_dim=self.peft_config.task_embedding_dim
                     )
 
                 new_module = WarpBlock(target, new_module)
@@ -418,107 +428,139 @@ class Lora(nn.Module):
         return out
 
 
-class MultiTaskLora(nn.Module):
-    """
-    Multi-Task LoRA with shared expert and task-specific experts.
-    
-    Architecture:
-    - Shared expert: Always active, captures cross-task general knowledge
-    - Task-specific experts: One expert per task, selected by task_id
-    
-    Forward:
-        output = shared_expert(x) * scaling
-        output += task_expert[task_id](x) * scaling * gate_weight
-    """
-    
+class MultiTaskLoraBase(nn.Module):
     def __init__(
-        self, 
-        in_features, 
-        out_features, 
-        r=32, 
-        lora_alpha=64, 
-        task_num=2, 
-        task_embedding_dim=64,
-        p=0.1
+        self,
+        in_features,
+        out_features,
+        r=32,
+        lora_alpha=64,
+        task_num=3,
+        p=0.1,
     ):
         super().__init__()
         self.r = r
         self.lora_alpha = lora_alpha
         self.task_num = task_num
         self.scaling = lora_alpha / r
-        
+
         self.lora_dropout = nn.Dropout(p)
-        
+
         # Shared expert LoRA (always active)
         self.shared_lora_A = nn.Linear(in_features, r, bias=False)
         self.shared_lora_B = nn.Linear(r, out_features, bias=False)
-        
+
         # Task-specific expert LoRAs (one per task)
-        self.task_lora_A = nn.ModuleList([
-            nn.Linear(in_features, r, bias=False) 
-            for _ in range(task_num)
-        ])
-        self.task_lora_B = nn.ModuleList([
-            nn.Linear(r, out_features, bias=False) 
-            for _ in range(task_num)
-        ])
-        
-        # Task embedding for gating
-        self.task_embedding = nn.Embedding(task_num, task_embedding_dim)
-        
-        # Gate network: task_embedding -> scalar weight
-        self.gate = nn.Sequential(
-            nn.Linear(task_embedding_dim, task_embedding_dim // 2),
-            nn.ReLU(),
-            nn.Linear(task_embedding_dim // 2, 1),
-            nn.Sigmoid()  # Output in [0, 1]
+        self.task_lora_A = nn.ModuleList(
+            [nn.Linear(in_features, r, bias=False) for _ in range(task_num)]
         )
-        
+        self.task_lora_B = nn.ModuleList(
+            [nn.Linear(r, out_features, bias=False) for _ in range(task_num)]
+        )
+
+        # Task embedding for gating
+        # self.task_embedding = nn.Embedding(task_num, task_embedding_dim)
+
+        # Gate network: task_embedding -> scalar weight
+        # self.gate = nn.Sequential(
+        #     nn.Linear(task_embedding_dim, task_embedding_dim // 2),
+        #     nn.ReLU(),
+        #     nn.Linear(task_embedding_dim // 2, 1),
+        #     nn.Sigmoid()  # Output in [0, 1]
+        # )
+
         self.reset_parameters()
-    
+
     def reset_parameters(self):
         # Shared expert: kaiming for A, zeros for B
         nn.init.kaiming_uniform_(self.shared_lora_A.weight, a=math.sqrt(5))
         nn.init.zeros_(self.shared_lora_B.weight)
-        
+
         # Task experts: kaiming for A, zeros for B
         for i in range(self.task_num):
             nn.init.kaiming_uniform_(self.task_lora_A[i].weight, a=math.sqrt(5))
             nn.init.zeros_(self.task_lora_B[i].weight)
-        
+
         # Task embedding: normal initialization
-        nn.init.normal_(self.task_embedding.weight, mean=0.0, std=0.02)
-    
-    def forward(self, x, task_id=None):
+        # nn.init.normal_(self.task_embedding.weight, mean=0.0, std=0.02)
+
+    def forward(self, x, task_id):
         """
-        Forward pass.
-        
+        Forward pass combining shared expert and task-specific expert.
+
         Args:
             x: Input tensor
-            task_id: Task identifier (int)
-        
+            task_id: Index of the task-specific expert to use
+
         Returns:
-            Output tensor (shared_expert + task_expert)
+            Combined output from shared expert and task-specific expert
         """
-        x_dropped = self.lora_dropout(x)
-        
-        # Shared expert (always active)
-        shared_out = self.shared_lora_B(self.shared_lora_A(x_dropped)) * self.scaling
-        
-        # Task-specific expert
-        if task_id is not None:
-            task_id_tensor = torch.tensor(task_id, device=x.device)
-            task_embed = self.task_embedding(task_id_tensor)
-            gate_weight = self.gate(task_embed)  # Shape: (1,)
-            
-            task_idx = task_id if isinstance(task_id, int) else task_id.item()
-            task_out = self.task_lora_B[task_idx](
-                self.task_lora_A[task_idx](x_dropped)
-            ) * self.scaling * gate_weight.view(-1, 1, 1)
-            
-            return shared_out + task_out
-        
-        return shared_out
+        # Shared expert output (frozen during training)
+        shared_out = (
+            self.shared_lora_B(self.shared_lora_A(self.lora_dropout(x))) * self.scaling
+        )
+
+        # Task-specific expert output (trainable)
+        task_out = (
+            self.task_lora_B[task_id](self.task_lora_A[task_id](self.lora_dropout(x)))
+            * self.scaling
+        )
+
+        return shared_out + task_out
+
+
+class MultiTaskLora(nn.Module):
+    """
+    Multi-task LoRA adapter that uses a shared expert and task-specific expert.
+
+    The shared expert is frozen during training, only the task-specific expert
+    for the given task_id is trainable.
+
+    Args:
+        task_id: Index of the task-specific expert to use and fine-tune
+        in_features: Input feature dimension
+        out_features: Output feature dimension
+        r: LoRA rank
+        lora_alpha: LoRA scaling factor
+        task_num: Total number of tasks
+        p: Dropout probability
+    """
+
+    def __init__(
+        self, task_id, in_features, out_features, r=32, lora_alpha=64, task_num=3, p=0.1
+    ):
+        super().__init__()
+        self.task_id = task_id
+        self.r = r
+        self.lora_alpha = lora_alpha
+        self.task_num = task_num
+
+        # Create the base layer containing all experts
+        self.base_layer = MultiTaskLoraBase(
+            in_features, out_features, r, lora_alpha, task_num, p
+        )
+
+        # Freeze shared expert parameters (only train task-specific expert)
+        self.base_layer.shared_lora_A.weight.requires_grad = False
+        self.base_layer.shared_lora_B.weight.requires_grad = False
+
+        # Freeze other task-specific experts (only train the one for this task_id)
+        for i in range(task_num):
+            if i != task_id:
+                self.base_layer.task_lora_A[i].weight.requires_grad = False
+                self.base_layer.task_lora_B[i].weight.requires_grad = False
+
+    def forward(self, x):
+        """
+        Forward pass using the task-specific expert and shared expert.
+
+        Args:
+            x: Input tensor
+
+        Returns:
+            Combined output from shared expert and task-specific expert
+        """
+        return self.base_layer(x, self.task_id)
 
 
 class WarpBlock(nn.Module):
