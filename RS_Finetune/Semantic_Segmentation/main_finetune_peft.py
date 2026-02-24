@@ -31,6 +31,8 @@ import torch.nn.functional as F
 
 # from model.semseg.deeplabv3plus_vit import DeepLabV3Plus
 from peft.tuners.semift import SemiFTConfig, AdaptModel
+from util.peft_utils import *
+
 
 parser = argparse.ArgumentParser(description="Semi-Supervised Semantic Segmentation")
 parser.add_argument("--config", type=str, required=True)
@@ -204,7 +206,7 @@ def main():
     args = parser.parse_args()
 
     cfg = yaml.load(open(args.config, "r"), Loader=yaml.Loader)
-    cfg["peft"] = "lora"
+    cfg["peft"] = "RSMT"
     cfg["target_modules"] = ["qkv", "fc1", "fc2"]
 
     logger = init_log("global", logging.INFO)
@@ -272,6 +274,9 @@ def main():
         p.requires_grad = False
 
     model = apply_peft(model, cfg)
+    # 设置任务
+    model = set_task(model, 1)
+
     logger.info(model)
     show_trainable_parameters(model, logger)
 
