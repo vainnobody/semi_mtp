@@ -4,7 +4,7 @@ from peft.tuners.semift import RSMT
 def set_task_trainable(model, task_id):
     for name, module in model.named_modules():
         if isinstance(module, RSMT):
-            module.set_task_id(task_id)
+            module.set_task_trainable(task_id)
 
 
 def set_trainable(model):
