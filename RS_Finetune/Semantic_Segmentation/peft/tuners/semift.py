@@ -450,9 +450,11 @@ class RSMT(nn.Module):
         if isinstance(task_id, int):
             task_id = [task_id]
         for i in range(self.task_num):
-            self.task_expert[i].requires_grad = False
+            for param in self.task_expert[i].parameters():
+                param.requires_grad = False
         for i in task_id:
-            self.task_expert[i].requires_grad = True
+            for param in self.task_expert[i].parameters():
+                param.requires_grad = True
 
     def set_task_id(self, task_id):
         self.task_id = task_id
