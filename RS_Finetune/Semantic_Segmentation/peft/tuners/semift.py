@@ -446,6 +446,11 @@ class RSMT(nn.Module):
             [Lora(in_features, out_features, r, lora_alpha, p) for _ in range(task_num)]
         )
 
+    def set_task_trainable(self, task_id):
+        for i in range(self.task_num):
+            self.task_expert[i].requires_grad = False
+        self.task_expert[task_id].requires_grad = True
+
     def forward(self, x, task_id=0):
         shared_out = self.shard_expert(x)
         task_out = self.task_expert[task_id](x)

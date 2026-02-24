@@ -498,6 +498,42 @@ def main():
                 if is_best:
                     torch.save(checkpoint, os.path.join(args.save_path, "best.pth"))
 
+            if rank == 0:
+                # 假设你的模型对象是 model
+                target_keywords = ["adapter"]
+                trainable_state_dict = {
+                    k: v
+                    for k, v in model.state_dict().items()
+                    if any(key in k for key in target_keywords)
+                }
+                torch.save(
+                    trainable_state_dict,
+                    os.path.join(args.save_path, "adapter_latest.pth"),
+                )
+                if is_best:
+                    torch.save(
+                        trainable_state_dict,
+                        os.path.join(args.save_path, "adapter_best.pth"),
+                    )
+
+            if rank == 0:
+                target_keywords = ["semsegdecoder", "semseghead"]
+
+                trainable_state_dict = {
+                    k: v
+                    for k, v in model.state_dict().items()
+                    if any(key in k for key in target_keywords)
+                }
+                torch.save(
+                    trainable_state_dict,
+                    os.path.join(args.save_path, "semseg_latest.pth"),
+                )
+                if is_best:
+                    torch.save(
+                        trainable_state_dict,
+                        os.path.join(args.save_path, "semseg_best.pth"),
+                    )
+
 
 if __name__ == "__main__":
     set_seeds(1234)
