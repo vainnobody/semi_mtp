@@ -504,38 +504,50 @@ def main():
                     torch.save(checkpoint, os.path.join(args.save_path, "best.pth"))
 
             if rank == 0:
-                # 假设你的模型对象是 model
-                target_keywords = ["adapter"]
-                trainable_state_dict = {
+                # 获取所有可训练参数的名称
+                trainable_param_names = {
+                    name
+                    for name, param in model.named_parameters()
+                    if param.requires_grad
+                }
+
+                # 保存adapter参数（只保存可训练的部分）
+                adapter_state_dict = {
                     k: v
                     for k, v in model.state_dict().items()
-                    if any(key in k for key in target_keywords)
+                    if "adapter" in k
+                    and any(
+                        name.startswith(k.rsplit(".", 1)[0])
+                        for name in trainable_param_names
+                    )
                 }
                 torch.save(
-                    trainable_state_dict,
+                    adapter_state_dict,
                     os.path.join(args.save_path, "adapter_latest.pth"),
                 )
                 if is_best:
                     torch.save(
-                        trainable_state_dict,
+                        adapter_state_dict,
                         os.path.join(args.save_path, "adapter_best.pth"),
                     )
 
-            if rank == 0:
-                target_keywords = ["semsegdecoder", "semseghead"]
-
-                trainable_state_dict = {
+                # 保存分割头参数（只保存可训练的部分）
+                semseg_state_dict = {
                     k: v
                     for k, v in model.state_dict().items()
-                    if any(key in k for key in target_keywords)
+                    if any(key in k for key in ["semsegdecoder", "semseghead"])
+                    and any(
+                        name.startswith(k.rsplit(".", 1)[0])
+                        for name in trainable_param_names
+                    )
                 }
                 torch.save(
-                    trainable_state_dict,
+                    semseg_state_dict,
                     os.path.join(args.save_path, "semseg_latest.pth"),
                 )
                 if is_best:
                     torch.save(
-                        trainable_state_dict,
+                        semseg_state_dict,
                         os.path.join(args.save_path, "semseg_best.pth"),
                     )
 
