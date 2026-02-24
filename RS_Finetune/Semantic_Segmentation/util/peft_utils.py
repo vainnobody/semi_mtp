@@ -22,3 +22,4 @@ def set_task_id(model, task_id):
 def set_task(model, task_id):
     set_task_trainable(model, task_id)
     set_task_id(model, task_id)
+    return model
