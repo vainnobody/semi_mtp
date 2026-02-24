@@ -170,9 +170,8 @@ class AdaptModel(torch.nn.Module):
                     new_module = Lora(
                         target.in_features, target.out_features, r=32, lora_alpha=64
                     )
-                elif self.peft_config.method == "rs_multi_task_lora":
-                    new_module = MultiTaskLora(
-                        task_id=self.peft_config.task_id,
+                elif self.peft_config.method == "RSMT":
+                    new_module = RSMT(
                         in_features=target.in_features,
                         out_features=target.out_features,
                         r=32,
