@@ -444,13 +444,26 @@ class RSMT(nn.Module):
         self.task_expert = nn.ModuleList(
             [Lora(in_features, out_features, r, lora_alpha, p) for _ in range(task_num)]
         )
+        self.task_id = 0
 
     def set_task_trainable(self, task_id):
+        if isinstance(task_id, int):
+            task_id = [task_id]
         for i in range(self.task_num):
             self.task_expert[i].requires_grad = False
-        self.task_expert[task_id].requires_grad = True
+        for i in task_id:
+            self.task_expert[i].requires_grad = True
 
-    def forward(self, x, task_id=0):
+    def set_task_id(self, task_id):
+        self.task_id = task_id
+
+    def set_trainable(self):
+        for param in self.parameters():
+            param.requires_grad = True
+
+    def forward(self, x, task_id=None):
+        if task_id is None:
+            task_id = self.task_id
         shared_out = self.shard_expert(x)
         task_out = self.task_expert[task_id](x)
         return shared_out + task_out
