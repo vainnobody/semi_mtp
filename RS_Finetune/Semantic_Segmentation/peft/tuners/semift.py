@@ -26,7 +26,7 @@ import torch.nn.functional as F
 from transformers.pytorch_utils import Conv1D
 
 from ..utils import PeftConfig, PeftType, transpose
-from peft.tuners.moe import SemiFt
+from peft.tuners.moe import ConvExpert
 
 
 @dataclass
@@ -440,10 +440,12 @@ class RSMT(nn.Module):
         self.scaling = lora_alpha / r
         self.dropout = nn.Dropout(p)
 
-        self.shard_expert = Lora(in_features, out_features, r, lora_alpha, p)
-        self.task_expert = nn.ModuleList(
-            [Lora(in_features, out_features, r, lora_alpha, p) for _ in range(task_num)]
-        )
+        # self.shard_expert = Lora(in_features, out_features, r, lora_alpha, p)
+        # self.task_expert = nn.ModuleList(
+        #     [Lora(in_features, out_features, r, lora_alpha, p) for _ in range(task_num)]
+        # )
+        self.shard_expert = ConvExpert(r, 3)
+        self.task_expert = nn.ModuleList([ConvExpert(r, 3) for _ in range(task_num)])
         self.task_id = 0
 
     def set_task_trainable(self, task_id):

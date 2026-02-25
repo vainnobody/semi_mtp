@@ -45,7 +45,13 @@ class DWConv(nn.Module):
 
 class ConvExpert(nn.Module):
     def __init__(
-        self, r, kernel_size=3, use_norm=True, activation="gelu", temperature=1.0
+        self,
+        r,
+        kernel_size=3,
+        use_norm=True,
+        activation="gelu",
+        temperature=1.0,
+        scale=2,
     ):
         super().__init__()
         self.r = r
@@ -53,6 +59,7 @@ class ConvExpert(nn.Module):
         self.use_norm = use_norm
         self.activate = activate
         self.temperature = temperature
+        self.scale = scale
 
         if activation == "gelu":
             self.act = nn.GELU()
@@ -86,7 +93,9 @@ class ConvExpert(nn.Module):
             nn.init.ones_(self.norm2.weight)
             nn.init.zeros_(self.norm2.bias)
 
-    def forward(self, x, scale):
+    def forward(self, x, scale=None):
+        if scale is None:
+            scale = self.scale
         B, N, r = x.shape
         H = W = int(N**0.5)
 
