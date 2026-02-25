@@ -428,6 +428,53 @@ class Lora(nn.Module):
         return out
 
 
+class AdapterFormer(nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        r: int,
+        dropout: float = 0.1,
+        scale: float = 0.1,
+    ):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.r = r
+        self.scale = scale  # Fixed scale value (not learnable)
+
+        # Down projection: in_features -> r (with bias)
+        self.down_proj = nn.Linear(in_features, r, bias=True)
+
+        # Activation function: ReLU (consistent with AdaptFormer paper)
+        self.act = nn.ReLU()
+
+        # Up projection: r -> out_features (with bias)
+        self.up_proj = nn.Linear(r, out_features, bias=True)
+
+        # Dropout layer (will be applied after activation in forward)
+        self.dropout = nn.Dropout(dropout)
+
+        # Initialize parameters
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.down_proj.weight, a=math.sqrt(5))
+        nn.init.zeros_(self.down_proj.bias)
+
+        # Up projection: Zero initialization
+        nn.init.zeros_(self.up_proj.weight)
+        nn.init.zeros_(self.up_proj.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.down_proj(x)
+        x = self.act(x)
+        x = self.dropout(x)
+        x = self.up_proj(x)
+        x = x * self.scale
+        return x
+
+
 class RSMT_Lora(nn.Module):
     def __init__(
         self, in_features, out_features, r=32, lora_alpha=64, task_num=3, p=0.1
