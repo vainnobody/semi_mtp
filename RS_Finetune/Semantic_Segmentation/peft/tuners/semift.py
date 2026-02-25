@@ -457,9 +457,7 @@ class RSMT(nn.Module):
 
     def reset_parameters(self):
         nn.init.kaiming_uniform_(self.proj_down.weight, a=math.sqrt(5))
-        nn.init.zeros_(self.proj_down.bias)
         nn.init.zeros_(self.proj_up.weight)
-        nn.init.zeros_(self.proj_up.bias)
 
     def set_task_trainable(self, task_id):
         if isinstance(task_id, int):
