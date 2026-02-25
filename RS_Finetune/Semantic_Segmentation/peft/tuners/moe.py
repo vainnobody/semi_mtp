@@ -99,7 +99,7 @@ class ConvExpert(nn.Module):
         B, N, r = x.shape
         H = W = int(N**0.5)
 
-        x_2d = x_2d.permute(0, 2, 1).reshape(B, r, H, W).contiguous()
+        x_2d = x.permute(0, 2, 1).reshape(B, r, H, W).contiguous()
 
         x_scale1 = F.interpolate(
             x_2d, scale_factor=scale, mode="bilinear", align_corners=False
