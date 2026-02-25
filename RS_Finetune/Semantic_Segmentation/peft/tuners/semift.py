@@ -428,6 +428,54 @@ class Lora(nn.Module):
         return out
 
 
+class RSMT_Lora(nn.Module):
+    def __init__(
+        self, in_features, out_features, r=32, lora_alpha=64, task_num=3, p=0.1
+    ):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.r = r
+        self.lora_alpha = lora_alpha
+        self.task_num = task_num
+        self.scaling = lora_alpha / r
+        self.dropout = nn.Dropout(p)
+
+        self.shard_expert = Lora(in_features, out_features, r, lora_alpha, p)
+        self.task_expert = nn.ModuleList(
+            [Lora(in_features, out_features, r, lora_alpha, p) for _ in range(task_num)]
+        )
+        self.task_id = 0
+
+    def set_task_trainable(self, task_id):
+        if isinstance(task_id, int):
+            task_id = [task_id]
+        for i in range(self.task_num):
+            for param in self.task_expert[i].parameters():
+                param.requires_grad = False
+        for i in task_id:
+            for param in self.task_expert[i].parameters():
+                param.requires_grad = True
+
+    def set_task_id(self, task_id):
+        self.task_id = task_id
+
+    def set_trainable(self):
+        for param in self.parameters():
+            param.requires_grad = True
+
+    def forward(self, x, task_id=None):
+        if task_id is None:
+            task_id = self.task_id
+
+        shared_out = self.shard_expert(x)
+        task_out = self.task_expert[task_id](x)
+
+        x_out = (shared_out + task_out) / 2
+
+        return x_out
+
+
 class RSMT(nn.Module):
     def __init__(
         self, in_features, out_features, r=32, lora_alpha=64, task_num=3, p=0.1
