@@ -106,7 +106,7 @@ class ConvExpert(nn.Module):
         )
         x_conv1 = self.dropout(self.act(self.conv1(x_scale1)))
         x_conv1 = F.interpolate(
-            x_conv1, scale_factor=(H, W), mode="bilinear", align_corners=False
+            x_conv1, size=(H, W), mode="bilinear", align_corners=False
         )
 
         x_out1 = x_conv1
@@ -116,7 +116,7 @@ class ConvExpert(nn.Module):
         )
         x_conv2 = self.dropout(self.act(self.conv2(x_scale2)))
         x_conv2 = F.interpolate(
-            x_conv2, scale_factor=(H, W), mode="bilinear", align_corners=False
+            x_conv2, size=(H, W), mode="bilinear", align_corners=False
         )
 
         x_out2 = x_conv2
