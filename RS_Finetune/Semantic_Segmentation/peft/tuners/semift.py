@@ -27,6 +27,7 @@ from transformers.pytorch_utils import Conv1D
 
 from ..utils import PeftConfig, PeftType, transpose
 from peft.tuners.moe import ConvExpert
+from .layer_scale import LayerScale
 
 
 @dataclass
@@ -64,7 +65,7 @@ class SemiFTConfig(PeftConfig):
     )
     nclass: int = field(default=5, metadata={"help": "Numbers of classes"})
     task_num: int = field(
-        default=2, metadata={"help": "Number of tasks for MultiTaskLora"}
+        default=3, metadata={"help": "Number of tasks for MultiTaskLora"}
     )
     task_id: int = field(
         default=0,
@@ -444,9 +445,21 @@ class RSMT(nn.Module):
         # self.task_expert = nn.ModuleList(
         #     [Lora(in_features, out_features, r, lora_alpha, p) for _ in range(task_num)]
         # )
+        self.proj_down = nn.Linear(in_features, r, bias=False)
+        self.proj_up = nn.Linear(r, out_features, bias=False)
         self.shard_expert = ConvExpert(r, 3)
         self.task_expert = nn.ModuleList([ConvExpert(r, 3) for _ in range(task_num)])
+        self.ls = LayerScale(out_features, init_values=1.0)
+        self.act = nn.GELU()
+
+        self.reset_parameters()
         self.task_id = 0
+
+    def reset_parameters(self):
+        nn.init.kaiming_uniform_(self.proj_down.weight, a=math.sqrt(5))
+        nn.init.zeros_(self.proj_down.bias)
+        nn.init.zeros_(self.proj_up.weight)
+        nn.init.zeros_(self.proj_up.bias)
 
     def set_task_trainable(self, task_id):
         if isinstance(task_id, int):
@@ -468,9 +481,24 @@ class RSMT(nn.Module):
     def forward(self, x, task_id=None):
         if task_id is None:
             task_id = self.task_id
-        shared_out = self.shard_expert(x)
-        task_out = self.task_expert[task_id](x)
-        return shared_out + task_out
+
+        x = self.act(self.proj_down(x))
+        cls_token, rel_token, x_content = x[:, :1, :], x[:, 1:5, :], x[:, 5:, :]
+
+        shared_out = self.shard_expert(x_content)
+        task_out = self.task_expert[task_id](x_content)
+
+        x_out = (shared_out + task_out) / 2
+
+        x_out = self.ls(
+            self.dropout(
+                self.proj_up(
+                    torch.cat([cls_token, rel_token, x_out + x_content], dim=1)
+                )
+            )
+        )
+
+        return x_out
 
 
 class WarpBlock(nn.Module):

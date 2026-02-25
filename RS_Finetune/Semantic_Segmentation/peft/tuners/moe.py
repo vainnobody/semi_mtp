@@ -57,7 +57,7 @@ class ConvExpert(nn.Module):
         self.r = r
         self.kernel_size = kernel_size
         self.use_norm = use_norm
-        self.activate = activate
+        self.activate = activation
         self.temperature = temperature
         self.scale = scale
 
@@ -99,7 +99,7 @@ class ConvExpert(nn.Module):
         B, N, r = x.shape
         H = W = int(N**0.5)
 
-        x_2d = x.permute(0, 2, 1).reshape(B, r, H, W).contiguous()
+        x_2d = x_2d.permute(0, 2, 1).reshape(B, r, H, W).contiguous()
 
         x_scale1 = F.interpolate(
             x_2d, scale_factor=scale, mode="bilinear", align_corners=False
