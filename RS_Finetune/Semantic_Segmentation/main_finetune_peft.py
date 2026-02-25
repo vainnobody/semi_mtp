@@ -276,9 +276,9 @@ def main():
     model = apply_peft(model, cfg)
     # 设置任务
     model = set_task(model, 1)
-
-    logger.info(model)
-    show_trainable_parameters(model, logger)
+    if rank == 0:
+        logger.info(model)
+        show_trainable_parameters(model, logger)
 
     lr = {
         "vit_h": 0.00005,
